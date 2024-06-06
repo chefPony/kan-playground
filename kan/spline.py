@@ -3,16 +3,19 @@ import torch
 
 class SplineBasis:
 
-    def __init__(self, grid: torch.Tensor, k: int):
+    def __init__(self, grid: torch.Tensor, k: int, extend_grid: bool = True):
         """
-        Spline basis class
+        A spline basis class
 
-        :param grid: (n_splines, n_grid_points) the knots of the spline basis each input can have a different grid
-        :param k: spline order
+        Args:
+            grid: (num_splines, num_knots)
+            k: spline order
+            extend_grid: if the provided grid needs to be extended considering the order
         """
         self.grid = grid
         self.k = k
-        self._extend_grid()
+        if extend_grid:
+            self._extend_grid()
         self.num_functions = self.grid.shape[1] - self.k - 1
 
     def _extend_grid(self):
@@ -64,7 +67,6 @@ class SplineBasis:
         out = torch.einsum('kij, ji->ki', bx.float(), c)
         return out
 
-
     def get_coef(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         """
         Retrieve the set of spline coefficients that would get y from x
@@ -96,5 +98,20 @@ class SplineBasis:
         new_grid = regular_grid * (1 - gamma) + gamma * adaptive_grid
         self.grid = new_grid.T
 
-    def extend_grid(self, x, num):
-        pass
+    def duplicate(self, num):
+        grid = torch.repeat_interleave(self.grid, num, dim=0)
+        return SplineBasis(grid=grid, k=self.k, extend_grid=False)
+
+
+def curve2coef(x: torch.Tensor, y: torch.Tensor, basis: SplineBasis) -> torch.Tensor:
+    """
+
+    :param x: (n_samples, n_splines)
+    :param y: (n_samples, n_splines)
+    :param basis:
+    :return:
+    """
+    # (num_samples, n_splines, n_basis)
+    bx = basis.evaluate(x)
+    c = torch.linalg.lstsq(bx, y.T).T
+    return c

@@ -55,3 +55,15 @@ class TestSplineBasis:
         spline = SplineBasis(grid=grid, k=0)
         spline.fit_grid(x, gamma=1)
         torch.testing.assert_close(spline.grid, expected_grid)
+
+    def test_duplicate(self):
+        grid = torch.stack([torch.arange(2, 3.25, 0.25), torch.arange(0, 1.25, 0.25)])
+        spline = SplineBasis(k=0, grid=grid)
+        new_spline = spline.duplicate(2)
+        expected_grid = torch.Tensor([
+            [2, 2.25, 2.5, 2.75, 3],
+            [2, 2.25, 2.5, 2.75, 3],
+            [0, 0.25, 0.5, 0.75, 1],
+            [0, 0.25, 0.5, 0.75, 1]
+        ])
+        torch.testing.assert_close(new_spline.grid, expected_grid)
