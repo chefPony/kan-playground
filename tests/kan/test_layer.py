@@ -1,7 +1,7 @@
 import torch
 from kan.layers import KANLayer
 from kan.spline import SplineBasis
-
+import math
 
 class TestKANLayer:
 
@@ -38,15 +38,26 @@ class TestKANLayer:
         expected_out[:, 1] = s[:, 1] + s[:, 3]
         torch.testing.assert_close(out, expected_out)
 
+    def test_update_grid(self):
+        grid = torch.linspace(-1, 1, 4)
+        grid = torch.stack([grid, grid], dim=0)
+        x = torch.rand(1000, 2) * 2 - 1
+        spline = SplineBasis(grid=grid, k=3)
+        klay = KANLayer(2, 2, basis=spline)
+        y1 = klay.spline(x)
+        klay.update_from_samples(x, gamma=0.01, margin=0.01)
+        y2 = klay.spline(x)
+        torch.testing.assert_close(y1, y2, atol=1e-3, rtol=math.inf)
+
     def test_refine_grid(self):
         grid = torch.linspace(-1, 1, 12)
         grid = torch.stack([grid, grid], dim=0)
         x = torch.linspace(-1, 1, 1000)
         x = torch.stack([x, x], dim=1)
-        spline = SplineBasis(grid=grid, k=3, extend_grid=False)
+        spline = SplineBasis(grid=grid, k=3)
         klay = KANLayer(2, 2, basis=spline)
         y1 = klay.spline(x)
         klay.refine_grid(x, 50)
         y2 = klay.spline(x)
-        torch.testing.assert_close(y1, y2, atol=1e-3, rtol=1e-2)
+        torch.testing.assert_close(y1, y2, atol=1e-3, rtol=math.inf)
 

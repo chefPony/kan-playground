@@ -47,11 +47,11 @@ class KANLayer(torch.nn.Module):
 
             grid = torch.linspace(-1, 1, old_grid.shape[1]).reshape((1, -1))
             mapping = SplineBasis(grid=torch.repeat_interleave(grid, repeats=n_splines, dim=0), k=1)
-            c_mapping = mapping.get_coef(mapping.grid.T[1:-1, ...], old_grid.T)
+            c_mapping = mapping.get_coef(mapping.grid.T, old_grid.T)
             percentiles = torch.repeat_interleave(torch.linspace(-1, 1, num_points).reshape(1, -1), n_splines, dim=0)
             new_grid = mapping.evaluate_coef(percentiles.T, c_mapping).T
 
-            new_basis = SplineBasis(grid=new_grid, k=self.basis.k, extend_grid=False)
+            new_basis = SplineBasis(grid=new_grid, k=self.basis.k)
             basis_dupl = new_basis.duplicate(self.n_out)
             x_eval = torch.repeat_interleave(x, self.n_out, 1)
             C = basis_dupl.get_coef(x_eval, y_eval)

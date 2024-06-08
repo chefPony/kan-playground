@@ -1,9 +1,19 @@
 import torch
 
 
+def _extend_grid(grid, k):
+    h = (grid[:, -1] - grid[:, 0])/(grid.shape[1] - 1)
+    if k > 0:
+        h = h.unsqueeze(-1) * torch.arange(1, k+1)
+        lext = grid[:, [0]] - h.flip(dims=(1, ))
+        rext = grid[:, [-1]] + h
+        grid = torch.cat([lext, grid, rext], dim=1)
+    return grid
+
+
 class SplineBasis:
 
-    def __init__(self, grid: torch.Tensor, k: int, extend_grid: bool = True):
+    def __init__(self, grid: torch.Tensor, k: int):
         """
         A spline basis class
 
@@ -14,18 +24,8 @@ class SplineBasis:
         """
         self.grid = grid
         self.k = k
-        if extend_grid:
-            self._extend_grid()
         self.num_functions = self.grid.shape[1] - self.k - 1
         self.n_knots = self.grid.shape[1]
-
-    def _extend_grid(self):
-        h = (self.grid[:, -1] - self.grid[:, 0])/(self.grid.shape[1] - 1)
-        if self.k > 0:
-            h = h.unsqueeze(-1) * torch.arange(1, self.k+1)
-            lext = self.grid[:, [0]] - h.flip(dims=(1, ))
-            rext = self.grid[:, [-1]] + h
-            self.grid = torch.cat([lext, self.grid, rext], dim=1)
 
     def _evaluate(self, x: torch.Tensor, grid: torch.Tensor, k: int) -> torch.Tensor:
         """
@@ -45,15 +45,18 @@ class SplineBasis:
             value = t0 * value[..., :-1] + t1 * value[..., 1:]
         return value
 
-    def evaluate(self, x: torch.Tensor) -> torch.Tensor:
+    def evaluate(self, x: torch.Tensor, extend_grid: bool = True) -> torch.Tensor:
         """
         Evaluate the spline basis over x
 
         :param x: (num_samples, n_splines)
         :return: (num_samples, n_splines, n_basis)
         """
+        if extend_grid:
+            grid = _extend_grid(self.grid, self.k).unsqueeze(dim=0)
+        else:
+            grid = self.grid.unsqueeze(dim=0)
         x = x.unsqueeze(dim=-1)
-        grid = self.grid.unsqueeze(dim=0)
         return self._evaluate(x, grid, self.k)
 
     def evaluate_coef(self, x: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
@@ -106,7 +109,7 @@ class SplineBasis:
 
     def duplicate(self, num):
         grid = torch.repeat_interleave(self.grid, num, dim=0)
-        return SplineBasis(grid=grid, k=self.k, extend_grid=False)
+        return SplineBasis(grid=grid, k=self.k)
 
 
 def curve2coef(x: torch.Tensor, y: torch.Tensor, basis: SplineBasis) -> torch.Tensor:
