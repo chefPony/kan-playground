@@ -17,6 +17,7 @@ class SplineBasis:
         if extend_grid:
             self._extend_grid()
         self.num_functions = self.grid.shape[1] - self.k - 1
+        self.n_knots = self.grid.shape[1]
 
     def _extend_grid(self):
         h = (self.grid[:, -1] - self.grid[:, 0])/(self.grid.shape[1] - 1)
@@ -75,27 +76,32 @@ class SplineBasis:
         :param y: (num_samples, num_splines)
         :return: (n_basis, num_splines)
         """
+        # (num_samples, n_splines, n_basis)
         bx = self.evaluate(x)
-        res = torch.linalg.lstsq(bx.float().permute(1, 0, 2), y.T)
+        # (n_splines, num_samples, n_basis), (n_splines, num_samples, 1)
+        res = torch.linalg.lstsq(bx.float().permute(1, 0, 2), y.permute(1, 0))
         return res.solution.T
 
-    def fit_grid(self, x: torch.Tensor, gamma: float, margin: float = 0.1) -> None:
+    def fit_grid(self, x: torch.Tensor, n_knots: int, gamma: float, margin: float = 0.1) -> None:
         """
         Update the grid from samples
         :param x: (num_samples, n_splines)
+        :param n_knots:
         :param gamma:
         :param margin:
         :return:
         """
-        n_samples, n_grid_points = x.shape[0], self.grid.shape[1]
-        step = round(n_samples / (n_grid_points - 1) + 0.5)
+        n_samples, n_grid_points = x.shape[0], n_knots
+        step = n_samples // (n_grid_points - 1)
+        idx = [i*step for i in range(n_grid_points-1)]
         x_pos, _ = x.sort(dim=0)
-        adaptive_grid = torch.cat([x_pos[::step, :], x_pos[[-1], :]], dim=0)
+        adaptive_grid = torch.cat([x_pos[idx, :], x_pos[[-1], :]], dim=0)
         adaptive_grid[0, :] -= margin
         adaptive_grid[-1, :] += margin
-        regular_grid = (x_pos[-1, :] - x_pos[0, :] + 2 * margin) / (n_grid_points - 2)
+        regular_grid = (x_pos[-1, :] - x_pos[0, :] + 2 * margin) / (n_grid_points - 1)
         regular_grid = x_pos[0, :] - margin + regular_grid * torch.arange(0, n_grid_points).unsqueeze(dim=-1)
         new_grid = regular_grid * (1 - gamma) + gamma * adaptive_grid
+        self.n_knots = n_knots
         self.grid = new_grid.T
 
     def duplicate(self, num):

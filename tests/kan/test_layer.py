@@ -10,7 +10,7 @@ class TestKANLayer:
         x = torch.stack([torch.linspace(0, 1, 5), torch.linspace(3, 4, 5)]).T
         C = torch.ones((spline.num_functions, 4))
         C[:, 2:] = 0.5
-        kl = KANLayer(n_in=2, n_out=2, basis=spline, C=C)
+        kl = KANLayer(n_in=2, n_out=2, basis=spline, C=C, w_sp=None)
         out = kl.spline(x)
         expected_out = torch.ones((5, 4))
         expected_out[:, 2:] = 0.5
@@ -19,22 +19,34 @@ class TestKANLayer:
     def test_silu(self):
         spline = SplineBasis(k=0, grid=torch.stack([torch.linspace(0, 1.25, 4), torch.linspace(3, 4.25, 4)]))
         x = torch.stack([torch.linspace(0, 1, 5), torch.linspace(3, 4, 5)]).T
-        W = torch.ones((spline.num_functions, 4))
-        kl = KANLayer(n_in=2, n_out=2, basis=spline, W=W)
+        kl = KANLayer(n_in=2, n_out=2, basis=spline, w_sp=None)
         out = kl.silu(x)
         assert out.shape == (5, 4)
 
-    def test_update_grid(self):
-        x = torch.stack([torch.arange(0, 2, 0.1), torch.arange(2, 4, 0.1)]).T
-        grid = torch.stack([torch.arange(0, 1., 0.25), torch.arange(2, 3., 0.25)])
-        spline = SplineBasis(grid=grid, k=1)
-        old_C = torch.ones((spline.num_functions, 4))
-        l = KANLayer(n_in=2, n_out=2, basis=spline, C=old_C)
-        y1 = l.spline(x)
-        l.update_from_samples(x, gamma=1, margin=0.1)
-        new_C = l.C
-        y2 = l.spline(x)
-        expected_grid = torch.Tensor([[-0.1, 0.4, 0.8, 1.2, 1.6, 2],
-                                      [1.9, 2.4, 2.8, 3.2, 3.6, 4]])
-        torch.testing.assert_close(l.basis.grid, expected_grid)
+    def test_forward(self):
+        spline = SplineBasis(k=0, grid=torch.stack([torch.linspace(0, 1.25, 4), torch.linspace(3, 4.25, 4)]))
+        x = torch.stack([torch.linspace(0, 1, 5), torch.linspace(0, 1, 5)]).T
+        C = torch.ones((spline.num_functions, 4))
+        W = torch.ones((1, 4))
+        layer = KANLayer(n_in=2, n_out=2, basis=spline, C=C, w_silu=W, w_sp=W)
+        out = layer(x)
+        s = torch.ones((5, 4))
+        s[:, 2:] = 0
+        s = s + layer.silu(x)
+        expected_out = torch.zeros((5, 2))
+        expected_out[:, 0] = s[:, 0] + s[:, 2]
+        expected_out[:, 1] = s[:, 1] + s[:, 3]
+        torch.testing.assert_close(out, expected_out)
+
+    def test_refine_grid(self):
+        grid = torch.linspace(-1, 1, 12)
+        grid = torch.stack([grid, grid], dim=0)
+        x = torch.linspace(-1, 1, 1000)
+        x = torch.stack([x, x], dim=1)
+        spline = SplineBasis(grid=grid, k=3, extend_grid=False)
+        klay = KANLayer(2, 2, basis=spline)
+        y1 = klay.spline(x)
+        klay.refine_grid(x, 50)
+        y2 = klay.spline(x)
+        torch.testing.assert_close(y1, y2, atol=1e-3, rtol=1e-2)
 

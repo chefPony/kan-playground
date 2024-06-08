@@ -46,14 +46,26 @@ class TestSplineBasis:
         c = spline.get_coef(x, y)
         torch.testing.assert_close(c, expected_c)
 
-    def test_fit_grid(self):
+    def test_fit_adaptive_grid(self):
         x = torch.stack([torch.arange(0, 1, 0.1), torch.arange(2, 3, 0.1)]).T
         grid = torch.stack([torch.arange(2, 3.25, 0.25), torch.arange(0, 1.25, 0.25)])
         expected_grid = torch.Tensor([
-            [-0.1, 0.3, 0.6, 0.9, 1.],
-            [1.9, 2.3, 2.6, 2.9, 3]])
+            [-0.1, 0.2, 0.4, 0.6, 1.],
+            [1.9, 2.2, 2.4, 2.6, 3]])
         spline = SplineBasis(grid=grid, k=0)
-        spline.fit_grid(x, gamma=1)
+        spline.fit_grid(x, n_knots=spline.n_knots, gamma=1)
+        torch.testing.assert_close(spline.grid, expected_grid)
+
+    def test_fit_regular_grid(self):
+        x = torch.stack([torch.linspace(0, 1., 10), torch.linspace(2, 3, 10)]).T
+        grid = torch.stack([torch.linspace(2, 3, 5), torch.linspace(0, 1, 5)])
+        expected_grid = torch.stack([
+            torch.linspace(x[0, 0].item() - 0.1, x[-1, 0].item() + 0.1, 5),
+            torch.linspace(x[0, 1].item() - 0.1, x[-1, 1].item() + 0.1, 5)],
+            dim=0
+        )
+        spline = SplineBasis(grid=grid, k=0)
+        spline.fit_grid(x, n_knots=spline.n_knots, gamma=0)
         torch.testing.assert_close(spline.grid, expected_grid)
 
     def test_duplicate(self):
