@@ -3,6 +3,7 @@ from kan.layers import KANLayer
 from kan.spline import SplineBasis
 import math
 
+
 class TestKANLayer:
 
     def test_spline(self):
@@ -29,7 +30,7 @@ class TestKANLayer:
         C = torch.ones((spline.num_functions, 4))
         W = torch.ones((1, 4))
         layer = KANLayer(n_in=2, n_out=2, basis=spline, C=C, w_silu=W, w_sp=W)
-        out = layer(x)
+        out, _ = layer(x)
         s = torch.ones((5, 4))
         s[:, 2:] = 0
         s = s + layer.silu(x)
@@ -39,7 +40,7 @@ class TestKANLayer:
         torch.testing.assert_close(out, expected_out)
 
     def test_update_grid(self):
-        grid = torch.linspace(-1, 1, 4)
+        grid = torch.linspace(-1.1, 1.1, 4)
         grid = torch.stack([grid, grid], dim=0)
         x = torch.rand(1000, 2) * 2 - 1
         spline = SplineBasis(grid=grid, k=3)

@@ -4,7 +4,7 @@ from kan.spline import SplineBasis
 
 class KANLayer(torch.nn.Module):
 
-    def __init__(self, n_in: int, n_out: int, basis: SplineBasis, noise_scale: float = 0.1,
+    def __init__(self, n_in: int, n_out: int, basis: SplineBasis, noise_scale: float = 0.1, bias: bool = False,
                  C: torch.Tensor = None, w_silu: torch.Tensor = None, w_sp: torch.Tensor = None):
         super().__init__()
         self.n_in, self.n_out = n_in, n_out
@@ -14,7 +14,7 @@ class KANLayer(torch.nn.Module):
         if C is None:
             grid = torch.repeat_interleave(self.basis.grid.T, repeats=self.n_out, dim=1)
             C = self.basis.duplicate(self.n_out).get_coef(grid, noises)
-        self.C = torch.nn.Parameter(C)
+        self.C = torch.nn.Parameter(C.contiguous())
 
         if w_silu is None:
             w_silu = torch.empty((1, self.n_in * self.n_out))
@@ -25,6 +25,11 @@ class KANLayer(torch.nn.Module):
             w_sp = torch.empty((1, self.n_in * self.n_out))
             torch.nn.init.xavier_normal_(w_sp)
         self.w_sp = torch.nn.Parameter(w_sp)
+
+        if bias:
+            self.bias = torch.nn.Parameter(torch.zeros(1, self.n_out))
+        else:
+            self.bias = torch.zeros(1, self.n_out, requires_grad=False)
 
     def initialize_from_samples(self, x, gamma, margin=0.1):
         self.basis.fit_grid(x, self.basis.n_knots, gamma, margin)
@@ -59,9 +64,10 @@ class KANLayer(torch.nn.Module):
             self.C = torch.nn.Parameter(C)
 
     def forward(self, x):
-        out = self.w_silu * self.silu(x) + self.w_sp * self.spline(x)
-        out = out.reshape((x.shape[0], self.n_in, self.n_out))
-        return out.sum(dim=1)
+        x = self.w_silu * self.silu(x) + self.w_sp * self.spline(x)
+        post_act = x.reshape((x.shape[0], self.n_in, self.n_out))
+        x = post_act.sum(dim=1) + self.bias
+        return x, post_act
 
     def spline(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -72,16 +78,10 @@ class KANLayer(torch.nn.Module):
         Returns:
             (num_samples, n_in * n_out)
         """
-        # (num_samples, nin, nbasis)
-        out = self.basis.evaluate(x)
-        # (n_samples, nin * nout, nbasis)
-        #out = torch.einsum("ijk,q->ijqk", out, ones).flatten(1, 2)
-        out = torch.repeat_interleave(out, self.n_out, dim=1)
-        # (n_samples, nin * nout)
-        out = torch.einsum("ijk,kj->ij", out, self.C)
+        x = torch.repeat_interleave(x, self.n_out, dim=1)
+        out = self.basis.duplicate(self.n_out).evaluate_coef(x, self.C)
         return out
 
     def silu(self, x):
-        ones = torch.ones(self.n_out)
-        x_eval = torch.einsum("ij,k->ijk", x, ones).flatten(1)
+        x_eval = torch.repeat_interleave(x, self.n_out, dim=1).flatten(1)
         return torch.nn.functional.silu(x_eval)
