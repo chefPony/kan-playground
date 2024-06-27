@@ -21,7 +21,7 @@ class TestKANLayer:
         spline = SplineBasis(k=0, grid=torch.stack([torch.linspace(0, 1.25, 4), torch.linspace(3, 4.25, 4)]))
         x = torch.stack([torch.linspace(0, 1, 5), torch.linspace(3, 4, 5)]).T
         kl = KANLayer(n_in=2, n_out=2, basis=spline, w_sp=None)
-        out = kl.silu(x)
+        out = kl.base_activation(x)
         assert out.shape == (5, 4)
 
     def test_forward(self):
@@ -29,11 +29,11 @@ class TestKANLayer:
         x = torch.stack([torch.linspace(0, 1, 5), torch.linspace(0, 1, 5)]).T
         C = torch.ones((spline.num_functions, 4))
         W = torch.ones((1, 4))
-        layer = KANLayer(n_in=2, n_out=2, basis=spline, C=C, w_silu=W, w_sp=W)
+        layer = KANLayer(n_in=2, n_out=2, basis=spline, C=C, w_base=W, w_sp=W)
         out, _ = layer(x)
         s = torch.ones((5, 4))
         s[:, 2:] = 0
-        s = s + layer.silu(x)
+        s = s + layer.base_activation(x)
         expected_out = torch.zeros((5, 2))
         expected_out[:, 0] = s[:, 0] + s[:, 2]
         expected_out[:, 1] = s[:, 1] + s[:, 3]

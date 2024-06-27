@@ -4,8 +4,9 @@ from kan.spline import SplineBasis
 
 class KANLayer(torch.nn.Module):
 
-    def __init__(self, n_in: int, n_out: int, basis: SplineBasis, noise_scale: float = 0.1, bias: bool = False,
-                 C: torch.Tensor = None, w_silu: torch.Tensor = None, w_sp: torch.Tensor = None):
+    def __init__(self, n_in: int, n_out: int, basis: SplineBasis, base = torch.nn.SiLU(),
+                 noise_scale: float = 0.1, bias: bool = False, C: torch.Tensor = None, w_base: torch.Tensor = None,
+                 w_sp: torch.Tensor = None):
         super().__init__()
         self.n_in, self.n_out = n_in, n_out
         self.basis = basis
@@ -16,15 +17,16 @@ class KANLayer(torch.nn.Module):
             C = self.basis.duplicate(self.n_out).get_coef(grid, noises)
         self.C = torch.nn.Parameter(C.contiguous())
 
-        if w_silu is None:
-            w_silu = torch.empty((1, self.n_in * self.n_out))
-            torch.nn.init.xavier_normal_(w_silu)
-        self.w_silu = torch.nn.Parameter(w_silu)
+        if w_base is None:
+            w_base = torch.empty((1, self.n_in * self.n_out))
+            torch.nn.init.xavier_normal_(w_base)
+        self.w_base = torch.nn.Parameter(w_base)
 
         if w_sp is None:
             w_sp = torch.empty((1, self.n_in * self.n_out))
             torch.nn.init.xavier_normal_(w_sp)
         self.w_sp = torch.nn.Parameter(w_sp)
+        self.base = base
 
         if bias:
             self.bias = torch.nn.Parameter(torch.zeros(1, self.n_out))
@@ -64,7 +66,7 @@ class KANLayer(torch.nn.Module):
             self.C = torch.nn.Parameter(C)
 
     def forward(self, x):
-        x = self.w_silu * self.silu(x) + self.w_sp * self.spline(x)
+        x = self.w_sp * self.spline(x) + self.w_base * self.base_activation(x)
         post_act = x.reshape((x.shape[0], self.n_in, self.n_out))
         x = post_act.sum(dim=1) + self.bias
         return x, post_act
@@ -82,6 +84,6 @@ class KANLayer(torch.nn.Module):
         out = self.basis.duplicate(self.n_out).evaluate_coef(x, self.C)
         return out
 
-    def silu(self, x):
+    def base_activation(self, x):
         x_eval = torch.repeat_interleave(x, self.n_out, dim=1).flatten(1)
-        return torch.nn.functional.silu(x_eval)
+        return self.base(x_eval)
